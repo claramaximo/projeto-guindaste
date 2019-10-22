@@ -1,0 +1,252 @@
+#include <Stepper.h>
+#include <String.h>
+
+const byte numChars = 16;
+char receivedChars[numChars]; // an array to store the received data
+
+
+// PARÂMETROS - RECEBIMENTO DE STRING
+String inputString = ""; // an array to store the received data
+bool stringComplete = false;  // whether the string is complete
+
+// PARÂMETROS - 
+const int numBits = 8;
+int a[numBits];
+int b[numBits];
+int bytes_reconstruidos[2*numBits];
+
+// PARÂMETROS - PROTOCOLO DE COMUNICAÇÃO
+int posicao_sinal_angulo = 0;
+int posicao_sinal_altura = 9;
+int posicao_estadoEletroima = 15;
+
+// PARÂMETROS RECEBIDOS POR COMUNICAÇÃO SERIAL
+float angulo;
+float altura;
+bool estado_Eletroima;
+
+
+// PARÂMETROS MOTOR DE PASSOS
+const int stepsPerRevolution = 500; 
+//Inicializa a biblioteca utilizando as portas de 8 a 11 para 
+//ligacao ao motor 
+Stepper myStepper(stepsPerRevolution, 8,10,9,11);
+
+// PARÂMETROS - PASSOS
+float passos_1voltacompleta = 4096;
+float num_passo_angulo = passos_1voltacompleta/360;
+float num_passo_altura = (2*3.14159*(0.005/2)) * passos_1voltacompleta;
+int passos_angulo;
+int passos_altura; 
+
+
+//boolean newData = false;
+
+void setup() {
+ Serial.begin(9600);
+ inputString.reserve(numChars);
+ 
+ //Determina a velocidade inicial do motor 
+ myStepper.setSpeed(45);
+ 
+}
+
+void loop() {
+ 
+ if(stringComplete){
+    
+    //Serial.print(inputString);
+    processa_string(inputString);
+    converte_int2step();
+    move_stepMotors();
+    
+    // clear the string:
+    inputString = "";
+    stringComplete = false;
+ }
+}
+
+
+void serialEvent(){
+  while (Serial.available()) {
+    // get the new byte:
+    char inChar = (char)Serial.read();
+    // add it to the inputString:
+    inputString += inChar;
+    // if the incoming character is a newline, set a flag so the main loop can
+    // do something about it:
+    if (inChar == '\n') {
+      stringComplete = true;
+    }
+  }
+}
+
+
+void processa_string(String dadosEntrada){
+
+  int primeiro_Byte, segundo_Byte;
+  int vetor_primeiroByte[8];
+  int vetor_segundoByte[8];
+  int i,j, auxiliar;
+  
+  
+  for(i = 0; i< dadosEntrada.length(); i++){
+    /*
+    Serial.println(dadosEntrada[i]);
+    Serial.println(int(dadosEntrada[i]));
+*/
+    if(i == 0){
+      primeiro_Byte = int(dadosEntrada[i]);
+    }
+    else if(i == 1){
+      segundo_Byte = int(dadosEntrada[i]);
+    }
+    
+  }
+
+  // PARA PRIMEIRO BYTE
+  for(i = 0; primeiro_Byte > 0; i++){    
+    a[i] = primeiro_Byte%2;    
+    primeiro_Byte = primeiro_Byte/2;  
+  }
+  j = 0;
+  for(i = 7; i >= 0 ; i--){
+    vetor_primeiroByte[j] = a[i];
+    j++;   
+  }
+  
+  
+  // PARA SEGUNDO BYTE
+  for(i = 0; segundo_Byte > 0; i++){    
+    b[i] = segundo_Byte%2;    
+    segundo_Byte = segundo_Byte/2;  
+  }
+  j = 0;
+  for(i = 7; i >= 0 ; i--){
+    vetor_segundoByte[j] = b[i];
+    j++;      
+  }
+  
+/*
+  Serial.println("");
+  for(i = 0; i < numBits  ; i++){    
+    Serial.print(vetor_primeiroByte[i]);  
+  }
+  Serial.println("");
+
+  
+  for(i = 0; i < numBits  ; i++){    
+    Serial.print(vetor_segundoByte[i]);  
+  }
+  Serial.println("");
+*/
+  i = 0;
+  j = 0;
+  for(int k = 0; k< 16; k++){
+    if((k>=0)&&(k<=7)){
+      bytes_reconstruidos[k] = vetor_primeiroByte[i];  
+      i++;
+    }
+    if((k>=8)&&(k<=15)){
+      bytes_reconstruidos[k] = vetor_segundoByte[j];  
+      j++;
+    }
+  }
+
+  Serial.println("");
+  for(i = 0; i < 16  ; i++){    
+    Serial.print(bytes_reconstruidos[i]);  
+  }
+  Serial.println("");
+
+  // PARA ÂNGULO
+  angulo = 0;
+  for(i = 1, j = 7; i <= 8 && j >= 0 ; i++, j--){    
+    angulo = angulo + (pow(2,j)*bytes_reconstruidos[i]);  
+  }
+  // SINAL ANGULO
+  if(bytes_reconstruidos[posicao_sinal_angulo] == 0){ // ANGULO POSITIVO
+    angulo = (+1)*angulo;
+  }
+  else{  // ANGULO NEGATIVO
+    angulo = (-1)*angulo;
+  }
+
+
+  // PARA ALTURA
+  altura = 0;
+  for(i = 10, j = 4; i <= 14 ; i++, j--){  
+    altura = altura +  ( pow(2,j) * bytes_reconstruidos[i] );
+    
+  }
+ 
+  
+  // SINAL ALTURA
+  if(bytes_reconstruidos[posicao_sinal_altura] == 0){ // ANGULO POSITIVO
+    altura = (+1)*altura;
+  }
+  else{  // ANGULO NEGATIVO
+    altura = (-1)*altura;
+  }
+
+
+  // PARA ESTADO DO ELETROÍMA
+  if(bytes_reconstruidos[posicao_estadoEletroima] == 0){ // DESLIGADO
+    estado_Eletroima = false;
+  }
+  else{  // LIGADO
+    estado_Eletroima = true;
+  }
+
+  // CAST PARA INT
+  angulo = static_cast<int>(angulo + 0.5);
+  altura = static_cast<int>(altura + 0.5);
+/*
+  Serial.println(angulo);
+  Serial.println(altura);
+  Serial.println(estado_Eletroima);*/
+  
+}
+
+// CONVERTE OS INTEIROS RECEBIDOS NO PROTOCOLO DE COMUNICAÇÃO EM PASSOS PARA O MOTOR DE PASSOS
+void converte_int2step(){
+
+    // CAST DE INT PARA NÃO TER VALOR DECIMAL (COM ARREDONDAMENTO)
+    passos_angulo = int( (num_passo_angulo*angulo) + 0.5);
+    passos_altura = int( (num_passo_altura*altura) + 0.5);
+   /* Serial.print("Angulo ");
+    Serial.print(angulo);
+    Serial.print(" corresponde a ");
+    Serial.print(passos_angulo);
+    Serial.println(" passos");
+    
+    Serial.print("Altura ");
+    Serial.print(altura);
+    Serial.print(" corresponde a ");
+    Serial.print(passos_altura);
+    Serial.println(" passos"); */ 
+}
+
+// MOVE OS MOTORES DE PASSO
+void move_stepMotors(){
+  
+    // MOTOR PARA ÂNGULO - BRAÇO DO GUINGASTE
+    //myStepper.step(atoi(inputString.c_str()));
+    myStepper.step(passos_angulo);
+    Serial.print("Angulo ");
+    Serial.print(angulo);
+    Serial.print(" -> ");
+    Serial.print(passos_angulo);
+    Serial.print(" passos. ");
+    
+    Serial.print("Altura ");
+    Serial.print(altura);
+    Serial.print(" -> ");
+    Serial.print(passos_altura);
+    Serial.println(" passos");
+
+
+    // MOTOR PARA ALTURA - ERGUE/DESCE O ELETROÍMA
+    //myStepper.step(atoi(inputString.c_str()));
+    //myStepper.step(passos_altura);
+}
