@@ -93,6 +93,7 @@ def Clicado(botao):
                 protocolo_de_comunicacao(sinal_angulo, input_angulo, sinal_altura, input_altura, estado_Eletroima)
             else:
                 sinal_angulo = sinal_negativo;
+                print("NEGATIVO")
                 protocolo_de_comunicacao(sinal_angulo, input_angulo, sinal_altura, input_altura, estado_Eletroima)
             
             #converte_num2step(input_angulo, input_altura)
@@ -211,10 +212,17 @@ def protocolo_de_comunicacao(sinal_angulo, input_angulo, sinal_altura, input_alt
     else:  #LIGADO
         charEnvio = charEnvio + '1'
 
+
+    # MARCADOR DE FINAL DE STRING
+    charEnvio = charEnvio + '\n'
+
     print(charEnvio)
 
+    envia_dados(charEnvio)
+    recebe_dados()
+
     # CONVERTE PARA STRING E MANDA BYTES
-    converte_strBin2char(charEnvio)
+    #converte_strBin2char(charEnvio)
 
 
 #Converte a string contendo a informação em bits para um char
